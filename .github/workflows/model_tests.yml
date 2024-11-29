@@ -27,4 +27,4 @@ jobs:
         
     - name: Run tests
       run: |
-        pytest test_model_checks.py -v 
+        pytest test_model_checks.py -v --capture=tee-sys
