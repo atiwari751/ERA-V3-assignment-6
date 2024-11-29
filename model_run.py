@@ -7,6 +7,7 @@ from torchvision import datasets, transforms
 from tqdm import tqdm
 from model import Net, get_device
 import multiprocessing
+from torch.optim.lr_scheduler import OneCycleLR
 
 
 #### Model ####
@@ -17,7 +18,7 @@ model = Net().to(device)
 #### Dataloader ####
     
 torch.manual_seed(1)
-batch_size_train = 5000
+batch_size_train = 1024
 batch_size_test = 1000
 
 kwargs = {'num_workers': 4, 'pin_memory': True} if device.type == "cuda" else {}
@@ -51,7 +52,7 @@ train_loader = torch.utils.data.DataLoader(
         '../data', 
         train=True, 
         download=True,
-        transform=train_transforms  # Apply augmentation only to training data
+        transform=train_transforms  # Applied to ALL training samples
     ),
     batch_size=batch_size_train, 
     shuffle=True, 
@@ -71,19 +72,28 @@ test_loader = torch.utils.data.DataLoader(
 
 #### Train and run ####
 
-def train(model, device, train_loader, optimizer, epoch):
+def train(model, device, train_loader, optimizer, epoch, scheduler):
     model.train()
     criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
     pbar = tqdm(train_loader)
+    correct = 0
+    processed = 0
+    
     for batch_idx, (data, target) in enumerate(pbar):
         data, target = data.to(device), target.to(device)
         optimizer.zero_grad()
         output = model(data)
-        #loss = F.nll_loss(output, target)
         loss = criterion(output, target)
         loss.backward()
         optimizer.step()
-        pbar.set_description(desc= f'loss={loss.item()} batch_id={batch_idx}')
+        scheduler.step()
+        
+        # Calculate training accuracy
+        pred = output.argmax(dim=1, keepdim=True)
+        correct += pred.eq(target.view_as(pred)).sum().item()
+        processed += len(data)
+        
+        pbar.set_description(desc= f'Loss={loss.item():.4f} Batch={batch_idx} Accuracy={100*correct/processed:0.2f}% LR={scheduler.get_last_lr()[0]:.6f}')
 
 
 def test(model, device, test_loader):
@@ -109,8 +119,33 @@ def test(model, device, test_loader):
 if __name__ == '__main__':
     multiprocessing.freeze_support()
     
-    optimizer = optim.AdamW(model.parameters(), lr=0.009, weight_decay=0.00001)
+    # Initialize model and optimizer
+    model = Net().to(device)
+    optimizer = optim.AdamW(
+        model.parameters(),
+        lr=0.001,  # Set initial learning rate
+        weight_decay=0.01  # Default AdamW weight decay
+    )
 
-    for epoch in range(1, 21):
-        train(model, device, train_loader, optimizer, epoch)
+    # Calculate number of steps for scheduler
+    epochs = 20
+    steps_per_epoch = len(train_loader)
+    total_steps = epochs * steps_per_epoch
+
+    # Initialize the scheduler
+    scheduler = OneCycleLR(
+        optimizer,
+        max_lr=0.01,  # Maximum learning rate at peak
+        epochs=epochs,
+        steps_per_epoch=steps_per_epoch,
+        pct_start=0.3,  # Percentage of training to increase LR
+        div_factor=10,  # Initial LR = max_lr/div_factor
+        final_div_factor=100,  # Final LR = initial_lr/final_div_factor
+        anneal_strategy='cos'  # Cosine annealing
+    )
+
+    for epoch in range(1, epochs + 1):
+        train(model, device, train_loader, optimizer, epoch, scheduler)
         test(model, device, test_loader)
+        # Print current learning rate
+        print(f"Learning Rate: {scheduler.get_last_lr()[0]:.6f}")
