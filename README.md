@@ -1,6 +1,6 @@
 # MNIST Digit Classification
 
-![Model Tests](https://github.com/{username}/{repository}/actions/workflows/model_tests.yml/badge.svg)
+![Model Tests](https://github.com/atiwari751/ERA-V3-assignment-6/actions/workflows/model_tests.yml/badge.svg)
 
 A PyTorch implementation of a CNN model for MNIST digit classification.
 
@@ -71,7 +71,7 @@ The model consists of several convolutional layers followed by fully connected l
 The model achieves:
 - Final Training Accuracy: 98.23%
 - Final Test Accuracy: 99.38%
-- Best Test Accuracy: 99.40%
+- Best Test Accuracy: 99.40% (first achieved in 18th epoch)
 
 ## Latest training logs
 
